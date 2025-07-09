@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Code Generator App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.5/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qr-code-styling@1.5.0/lib/qr-code-styling.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  </head>
+  <body class="bg-gray-900 text-white">
+    <div id="root" class="min-h-screen flex items-center justify-center p-4"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect } = React;
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*]).{8,}$/;
+      const urlRegex = /^https?:\/\/.+/;
+
+      const App = () => {
+        const [page, setPage] = useState(() => localStorage.getItem('currentUser') ? 'generator' : 'login');
+        return (
+          <div className="w-full max-w-4xl mx-auto">
+            {page === 'signup' && <Signup setPage={setPage} />}
+            {page === 'login' && <Login setPage={setPage} />}
+            {page === 'generator' && <QRGenerator setPage={setPage} />}
+          </div>
+        );
+      };
+
+      const Signup = ({ setPage }) => {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+
+        const handleSignup = () => {
+          if (!emailRegex.test(email)) return setError('Invalid email format.');
+          if (!passwordRegex.test(password)) return setError('Password too weak.');
+          const users = JSON.parse(localStorage.getItem('users') || '{}');
+          if (users[email]) return setError('Email already registered.');
+          users[email] = { password };
+          localStorage.setItem('users', JSON.stringify(users));
+          setPage('login');
+        };
+
+        return (
+          <div className="bg-gray-800 p-8 rounded shadow w-full max-w-md mx-auto">
+            <h2 className="text-2xl font-bold mb-4">Sign Up</h2>
+            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full mb-2 p-2 border rounded text-black" />
+            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full mb-2 p-2 border rounded text-black" />
+            {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+            <button onClick={handleSignup} className="w-full bg-blue-600 text-white p-2 rounded">Sign Up</button>
+            <p className="mt-2 text-sm">Already have an account? <button onClick={() => setPage('login')} className="text-blue-400 underline">Log in</button></p>
+          </div>
+        );
+      };
+
+      const Login = ({ setPage }) => {
+        const [email, setEmail] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+
+        const handleLogin = () => {
+          const users = JSON.parse(localStorage.getItem('users') || '{}');
+          if (!users[email]) return setError('Email not found.');
+          if (users[email].password !== password) return setError('Incorrect password.');
+          localStorage.setItem('currentUser', email);
+          setPage('generator');
+        };
+
+        return (
+          <div className="bg-gray-800 p-8 rounded shadow w-full max-w-md mx-auto">
+            <h2 className="text-2xl font-bold mb-4">Log In</h2>
+            <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} className="w-full mb-2 p-2 border rounded text-black" />
+            <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full mb-2 p-2 border rounded text-black" />
+            {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
+            <button onClick={handleLogin} className="w-full bg-blue-600 text-white p-2 rounded">Log In</button>
+            <p className="mt-2 text-sm">Don’t have an account? <button onClick={() => setPage('signup')} className="text-blue-400 underline">Sign up</button></p>
+          </div>
+        );
+      };
+
+      const QRGenerator = ({ setPage }) => {
+        const [url, setUrl] = useState('');
+        const [color, setColor] = useState('#000000');
+        const [style, setStyle] = useState('square');
+        const [markerBorder, setMarkerBorder] = useState('square');
+        const [markerCenter, setMarkerCenter] = useState('square');
+        const [imageData, setImageData] = useState(null);
+        const [error, setError] = useState('');
+        const [selectedTab, setSelectedTab] = useState('Link');
+        const [history, setHistory] = useState([]);
+        const user = localStorage.getItem('currentUser');
+
+        useEffect(() => {
+          const userHistory = JSON.parse(localStorage.getItem('qrHistory') || '{}');
+          setHistory(userHistory[user] || []);
+        }, []);
+
+        const generateQR = async () => {
+          if (!urlRegex.test(url)) return setError('Please enter a valid URL starting with http:// or https://');
+          setError('');
+
+          const qrCode = new QRCodeStyling({
+            width: 300,
+            height: 300,
+            data: url,
+            dotsOptions: {
+              color: color,
+              type: style,
+            },
+            cornersSquareOptions: {
+              type: markerBorder
+            },
+            cornersDotOptions: {
+              type: markerCenter
+            },
+            backgroundOptions: {
+              color: '#ffffff'
+            }
+          });
+
+          try {
+            const blob = await qrCode.getRawData('png');
+            const imageBase64 = URL.createObjectURL(new Blob([blob], { type: 'image/png' }));
+            setImageData(imageBase64);
+
+            const newEntry = { url, color, style, markerBorder, markerCenter, timestamp: new Date().toISOString(), imageData: imageBase64 };
+            const userHistory = JSON.parse(localStorage.getItem('qrHistory') || '{}');
+            const updated = [newEntry, ...(userHistory[user] || [])].slice(0, 50);
+            userHistory[user] = updated;
+            localStorage.setItem('qrHistory', JSON.stringify(userHistory));
+            setHistory(updated);
+          } catch (err) {
+            setError("QR generation failed");
+          }
+        };
+
+        const download = (type) => {
+          if (!imageData) return;
+          if (type === 'png') {
+            const link = document.createElement('a');
+            link.href = imageData;
+            link.download = `qrcode_${Date.now()}.png`;
+            link.click();
+          } else if (type === 'pdf') {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+            pdf.addImage(imageData, 'PNG', 15, 40, 180, 180);
+            pdf.save(`qrcode_${Date.now()}.pdf`);
+          }
+        };
+
+        const logout = () => {
+          localStorage.removeItem('currentUser');
+          setPage('login');
+        };
+
+        return (
+          <div className="bg-gray-800 p-6 rounded shadow w-full">
+            <div className="flex justify-between items-center mb-6 border-b pb-2">
+              <h2 className="text-3xl font-bold">Generate QR code</h2>
+              <button onClick={logout} className="text-red-400">Logout</button>
+            </div>
+
+            <div className="mb-4 flex space-x-4 text-gray-400 font-medium">
+              {['Link', 'Style', 'Color'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setSelectedTab(tab)}
+                  className={`px-4 py-1 rounded-full ${selectedTab === tab ? 'bg-white text-black' : ''}`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+
+            {selectedTab === 'Link' && (
+              <>
+                <label className="block mb-2 font-medium">Enter or paste URL:</label>
+                <input type="text" value={url} onChange={e => setUrl(e.target.value)} className="w-full p-2 border rounded text-black mb-1" placeholder="https://example.com" />
+                <p className="text-sm text-gray-400 mb-3">Your QR code will open this URL.</p>
+              </>
+            )}
+
+            {selectedTab === 'Color' && (
+              <>
+                <label className="block mb-2 font-medium">Select QR Code Color:</label>
+                <input type="color" value={color} onChange={e => setColor(e.target.value)} className="mb-4" />
+              </>
+            )}
+
+            {selectedTab === 'Style' && (
+              <div className="grid gap-4">
+                <div>
+                  <h4 className="font-medium mb-1">Dots</h4>
+                  <div className="flex space-x-2">
+                    {['square', 'rounded', 'dots'].map(type => (
+                      <button key={type} onClick={() => setStyle(type)} className={`p-2 bg-white text-black rounded ${style === type ? 'ring-2 ring-blue-500' : ''}`}>{type}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-1">Marker Border</h4>
+                  <div className="flex space-x-2">
+                    {['square', 'rounded', 'circle'].map(border => (
+                      <button key={border} onClick={() => setMarkerBorder(border)} className={`p-2 bg-white text-black rounded ${markerBorder === border ? 'ring-2 ring-blue-500' : ''}`}>{border}</button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-1">Marker Center</h4>
+                  <div className="flex space-x-2">
+                    {['square', 'dot'].map(center => (
+                      <button key={center} onClick={() => setMarkerCenter(center)} className={`p-2 bg-white text-black rounded ${markerCenter === center ? 'ring-2 ring-blue-500' : ''}`}>{center}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {error && <p className="text-red-500 text-sm mb-3">{error}</p>}
+            <button onClick={generateQR} className="bg-indigo-600 text-white px-4 py-2 rounded disabled:opacity-50" disabled={!url}>Generate</button>
+
+            {imageData && (
+              <div className="my-6">
+                <img src={imageData} alt="QR Code" className="mx-auto mb-4" />
+                <div className="flex justify-center gap-4">
+                  <button onClick={() => download('png')} className="bg-green-600 text-white px-4 py-2 rounded">Download PNG</button>
+                  <button onClick={() => download('pdf')} className="bg-yellow-500 text-black px-4 py-2 rounded">Download PDF</button>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8">
+              <h3 className="text-xl font-bold mb-2">History</h3>
+              <ul className="space-y-2 max-h-60 overflow-auto">
+                {history.map((entry, index) => (
+                  <li key={index} className="bg-gray-700 p-3 rounded">
+                    <p className="text-sm text-gray-300">{entry.url}</p>
+                    <img src={entry.imageData} alt="QR History" className="h-20 mt-2" />
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      };
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
